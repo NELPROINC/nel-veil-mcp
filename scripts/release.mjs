@@ -19,8 +19,17 @@
  *     rather than "you are logged out". This script checks `npm whoami` FIRST
  *     and says plainly what is wrong.
  *
+ * IT IS RESUMABLE, AND THAT IS THE POINT. A release is two publishes to two
+ * registries with a human in the middle of each, so it WILL sometimes stop
+ * half-done — 0.1.5 reached npm and then this script crashed before the
+ * registry. Re-running decides what is left by asking npm and the registry what
+ * they already serve, then skips those steps. The recovery for any failure is
+ * therefore just to run it again: there is no "resume from step N" to get
+ * right, and re-running after a full success is a no-op rather than a
+ * duplicate-version error.
+ *
  * Usage, from anywhere:
- *   node scripts/release.mjs            publish the version in package.json
+ *   node scripts/release.mjs            publish whatever is not yet published
  *   node scripts/release.mjs --dry-run  run every check, publish nothing
  */
 
@@ -36,9 +45,20 @@ const DRY = process.argv.includes("--dry-run");
 const PUBLISHER = process.env.MCP_PUBLISHER || "C:\\Users\\apoll\\mcp-publisher.exe";
 
 const step = (n, msg) => console.log(`\n[${n}] ${msg}`);
+const skip = (n, msg) => console.log(`\n[${n}] ${msg}  (already done, skipping)`);
 const die = (msg) => { console.error(`\nFAILED: ${msg}`); process.exit(1); };
-const run = (cmd, opts = {}) => execSync(cmd, { stdio: "inherit", ...opts });
+const run = (cmd) => execSync(cmd, { stdio: "inherit" });
 const capture = (cmd) => execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+/**
+ * Synchronous sleep via Atomics.wait on a SharedArrayBuffer.
+ *
+ * NOT `timeout /t 5`, which is what broke the 0.1.5 release: Windows' timeout
+ * needs a real console for its keypress handling, and under `npm run` stdin is
+ * a pipe, so it exits 1 and execSync throws. This is pure JS — no child
+ * process, no stdin, nothing that can fail.
+ */
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 const server = JSON.parse(readFileSync("server.json", "utf8"));
@@ -54,70 +74,129 @@ if (server.packages[0].version !== V) die(`server.json packages[0].version ${ser
 if (pkg.mcpName !== server.name) die(`package.json mcpName ${pkg.mcpName} != server.json name ${server.name}`);
 console.log(`    ok: ${V}, mcpName ${pkg.mcpName}`);
 
-// ── 2. Already published? Stop before wasting a 2FA prompt ──────────────
-step(2, "checking npm does not already have this version");
-// npm returns a bare STRING for one version, an ARRAY for many. Object.keys()
-// on an array yields indices, which silently defeats the guard below - the dry
-// run reported "latest on npm is 4".
-const npmVersions = () => {
+/**
+ * What npm actually serves, read over HTTP rather than via `npm view`.
+ *
+ * Two traps, both hit for real. `npm view <pkg> versions --json` returns a bare
+ * STRING for a single-version package and an ARRAY for many, and Object.keys()
+ * on the array yields INDICES — the first version of this script printed
+ * "latest on npm is 4". And `npm view` reads a local cache: it kept reporting
+ * 0.1.4 for minutes after 0.1.5 was live, which would have made the poll below
+ * spin for its full timeout.
+ */
+function npmVersions() {
   try {
-    const raw = JSON.parse(capture("npm view nel-veil-mcp versions --json"));
-    return Array.isArray(raw) ? raw : [raw];
+    const json = JSON.parse(capture("curl.exe -s https://registry.npmjs.org/nel-veil-mcp"));
+    return Object.keys(json.versions || {});
   } catch {
-    return [];
+    try {
+      const raw = JSON.parse(capture("npm view nel-veil-mcp versions --json"));
+      return Array.isArray(raw) ? raw : [raw];
+    } catch {
+      return [];
+    }
   }
-};
-const published = npmVersions();
-if (published.includes(V)) die(`nel-veil-mcp@${V} is already on npm. Bump the version first.`);
-console.log(`    ok: latest on npm is ${published[published.length - 1] ?? "(none)"}`);
+}
+
+/** The version the MCP registry currently serves as latest, or null. */
+function registryVersion() {
+  try {
+    const body = capture('curl.exe -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=nel-veil"');
+    const entry = JSON.parse(body).servers.find(
+      (e) => e._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest
+    );
+    return entry?.server?.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ── 2. Decide what is actually left to do ───────────────────────────────
+step(2, "checking what still needs publishing");
+const onNpm = npmVersions();
+const needsNpm = !onNpm.includes(V);
+const regNow = registryVersion();
+const needsRegistry = regNow !== V;
+console.log(`    npm      serves ${onNpm[onNpm.length - 1] ?? "(nothing)"}  ->  ${needsNpm ? "PUBLISH" : "up to date"}`);
+console.log(`    registry serves ${regNow ?? "(unknown)"}  ->  ${needsRegistry ? "PUBLISH" : "up to date"}`);
+
+if (!needsNpm && !needsRegistry) {
+  console.log(`\nNothing to do: ${V} is already on npm and the MCP registry.`);
+  process.exit(0);
+}
 
 // ── 3. npm auth. A stale token 404s on PUT and looks like a missing package ──
-step(3, "checking npm login");
-let who;
-try { who = capture("npm whoami"); }
-catch { die("not logged in to npm. Run:  npm login   (browser flow, land as nelproinc)"); }
-if (who !== "nelproinc") die(`logged in as "${who}", but the package is owned by nelproinc. Run: npm logout && npm login`);
-console.log(`    ok: ${who}`);
+if (needsNpm) {
+  step(3, "checking npm login");
+  let who;
+  try {
+    who = capture("npm whoami");
+  } catch {
+    die("not logged in to npm. Run:  npm login   (browser flow, land as nelproinc)");
+  }
+  if (who !== "nelproinc") {
+    die(`logged in as "${who}", but the package is owned by nelproinc. Run: npm logout && npm login`);
+  }
+  console.log(`    ok: ${who}`);
+} else {
+  skip(3, "npm login check");
+}
 
 // ── 4. Build and prove the built server actually works ──────────────────
 step(4, "build + smoke test");
 run("npm run build");
 run("node scripts/mcp-smoke.mjs example.com");
 
-if (DRY) { console.log("\nDry run complete. Nothing was published."); process.exit(0); }
-
-// ── 5. npm. This is the first of two moments needing you. ──────────────
-step(5, "publishing to npm  (2FA prompt incoming)");
-run("npm publish");
-
-// ── 6. npm is eventually consistent; the registry checks it synchronously ──
-step(6, "waiting for npm to serve the new version");
-let live = false;
-for (let i = 0; i < 30; i++) {
-  try {
-    if (npmVersions().includes(V)) { live = true; break; }
-  } catch { /* retry */ }
-  execSync(process.platform === "win32" ? "timeout /t 5 /nobreak >nul" : "sleep 5", { stdio: "ignore" });
-  process.stdout.write("    .");
+if (DRY) {
+  const todo = [needsNpm && "npm", needsRegistry && "MCP registry"].filter(Boolean).join(" + ");
+  console.log(`\nDry run complete. Nothing was published.`);
+  console.log(`Would publish to: ${todo}`);
+  process.exit(0);
 }
-if (!live) die(`npm still does not serve ${V} after ~2.5 min. Re-run once it does; npm publish is already done, so skip step 5.`);
-console.log(`\n    ok: npm serves ${V}`);
+
+// ── 5. npm. The first of two moments needing you. ──────────────────────
+if (needsNpm) {
+  step(5, "publishing to npm  (2FA prompt incoming)");
+  run("npm publish");
+
+  // ── 6. npm is eventually consistent; the registry checks it synchronously ──
+  step(6, "waiting for npm to serve the new version");
+  let live = false;
+  for (let i = 0; i < 30; i++) {
+    if (npmVersions().includes(V)) {
+      live = true;
+      break;
+    }
+    sleep(5000);
+    process.stdout.write(".");
+  }
+  if (!live) {
+    die(`npm still does not serve ${V} after ~2.5 min. Run this script again once it does; it will skip the npm publish automatically.`);
+  }
+  console.log(`\n    ok: npm serves ${V}`);
+} else {
+  skip(5, "npm publish");
+}
 
 // ── 7 + 8. Login and publish must be adjacent: the JWT expires in minutes ──
-step(7, "MCP registry login  (GitHub device code incoming)");
-run(`"${PUBLISHER}" login github`);
+if (needsRegistry) {
+  step(7, "MCP registry login  (GitHub device code incoming)");
+  run(`"${PUBLISHER}" login github`);
 
-step(8, "publishing to the MCP registry");
-run(`"${PUBLISHER}" publish`);
+  step(8, "publishing to the MCP registry");
+  run(`"${PUBLISHER}" publish`);
+} else {
+  skip(7, "MCP registry publish");
+}
 
 // ── 9. Verify from the outside, not from this working copy ─────────────
 step(9, "verifying");
-const npmLatest = capture("npm view nel-veil-mcp version");
-console.log(`    npm latest: ${npmLatest}${npmLatest === V ? "  ok" : "  MISMATCH"}`);
-try {
-  const body = capture(`curl.exe -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=nel-veil"`);
-  const entry = JSON.parse(body).servers.find((e) => e._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest);
-  console.log(`    registry latest: ${entry?.server?.version}${entry?.server?.version === V ? "  ok" : "  MISMATCH"}`);
-} catch { console.log("    registry check failed; verify by hand"); }
+const npmOk = npmVersions().includes(V);
+console.log(`    npm serves ${V}: ${npmOk ? "yes" : "NO"}`);
+const regFinal = registryVersion();
+console.log(`    registry latest: ${regFinal ?? "(unknown)"}${regFinal === V ? "  ok" : "  MISMATCH"}`);
 
+if (!npmOk || regFinal !== V) {
+  die("release incomplete. Run this script again; it will pick up whatever is missing.");
+}
 console.log(`\nReleased ${V}.`);
