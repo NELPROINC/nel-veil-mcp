@@ -35,7 +35,7 @@ claude mcp add nel-veil -- npx -y nel-veil-mcp
 npx -y nel-veil-mcp
 ```
 
-It prints a ready line **to stderr** — something like `nel-veil-mcp 0.1.2 ready — 7 tools, free passive tier.` — and then waits for JSON-RPC on stdin. That is correct: it is a stdio server, not a CLI, and stdout carries the protocol, so nothing else is ever written there.
+It prints a ready line **to stderr** — something like `nel-veil-mcp 0.1.3 ready — 7 tools, free passive tier.` — and then waits for JSON-RPC on stdin. That is correct: it is a stdio server, not a CLI, and stdout carries the protocol, so nothing else is ever written there.
 
 Requires Node 18 or newer.
 
@@ -57,9 +57,10 @@ Score: 100/100 (done)
   [LOW] DMARC has no reporting address (rua/ruf), you have no visibility into spoofing
   [LOW] DKIM key may be 1024-bit (weak), 2048-bit recommended
 
-Free passive check — public information only, no intrusive probing. Active scanning
-(ports, API probing, exploit demonstrations) requires verified domain ownership and
-runs only at nelprofessional.com.
+Free check, built from public information. No port scanning and no exploit testing —
+though some checks (TLS via Qualys SSL Labs, admin-panel reachability) do more than
+passive reading; see nelprofessional.com/mcp. Active scanning requires verified domain
+ownership and runs only at nelprofessional.com.
 More: https://www.nelprofessional.com/mcp
 ```
 
@@ -116,9 +117,11 @@ Active scanning — port exposure, API probing, proof-of-concept checks — live
 
 ## Development
 
-These steps need the **git repository**, not the published npm package — the tarball ships only `dist/`, so `src/` and `scripts/` are not in it.
+These steps need the [git repository](https://github.com/NELPROINC/nel-veil-mcp), not the published npm package — the tarball ships only `dist/`, so `src/` and `scripts/` are not in it.
 
 ```bash
+git clone https://github.com/NELPROINC/nel-veil-mcp.git
+cd nel-veil-mcp
 npm install
 npm run build
 node scripts/mcp-smoke.mjs example.com

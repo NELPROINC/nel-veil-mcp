@@ -2,16 +2,16 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.NELPROINC/nel-veil",
   "description": "Free passive security scanning - check any domain's DMARC, TLS, headers, and exposures.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "repository": {
-    "url": "https://github.com/NELPROFESSIONAL/nel-veil-mcp",
+    "url": "https://github.com/NELPROINC/nel-veil-mcp",
     "source": "github"
   },
   "packages": [
     {
       "registryType": "npm",
       "identifier": "nel-veil-mcp",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "transport": {
         "type": "stdio"
       },
