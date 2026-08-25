@@ -1,6 +1,6 @@
 {
   "name": "nel-veil-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "mcpName": "io.github.NELPROINC/nel-veil",
   "description": "Free passive security scanning for AI agents. Check any domain for email spoofing (DMARC/SPF/DKIM), TLS, security headers, exposed files, and subdomain takeover risk \u2014 using public information only, no intrusive probing.",
   "license": "MIT",

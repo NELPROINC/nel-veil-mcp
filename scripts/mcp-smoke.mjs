@@ -114,11 +114,43 @@ try {
     "every tool is annotated read-only and non-destructive",
     tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint === false)
   );
+  // check_tls is deliberately NOT described as passive: it queries Qualys SSL
+  // Labs, which actively assesses the target. This assertion used to demand that
+  // EVERY tool claim passivity, which is how the inaccurate copy passed review in
+  // the first place — the test was enforcing the wrong thing. It now enforces
+  // what is actually true, and pins the disclosure so it cannot quietly vanish.
+  const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
   check(
-    "every description states the passive/free boundary",
+    "every check tool states it is free and does no port scanning / exploit testing",
     tools
       .filter((t) => t.name !== "get_scan_report")
-      .every((t) => /passive/i.test(t.description) && /free/i.test(t.description))
+      .every((t) => /free/i.test(t.description) && /no port scanning|NO port scanning/i.test(t.description))
+  );
+  check(
+    "REGRESSION — check_tls DISCLOSES that it is not passive (Qualys SSL Labs assesses the target)",
+    /NOT passive/i.test(byName.check_tls?.description ?? "") &&
+      /SSL Labs/.test(byName.check_tls?.description ?? "")
+  );
+  check(
+    "REGRESSION — check_tls does not PROMISE certificate expiry it never returns",
+    (() => {
+      // Match a promise, not the disclaimer. The description legitimately contains
+      // the phrase "does NOT report certificate expiry dates" — a bare substring
+      // test flags the very sentence that fixes the problem.
+      const d = byName.check_tls?.description ?? "";
+      const promises = /Returns[^.]*expiry|including expiry dates|how many days remain until expiry|who issued it, how many/i.test(d);
+      const disclaims = /does NOT report certificate expiry/i.test(d);
+      return !promises && disclaims;
+    })()
+  );
+  check(
+    "REGRESSION — scan_domain discloses the admin-panel paths it requests",
+    /phpmyadmin/i.test(byName.scan_domain?.description ?? "") &&
+      !/NO endpoint enumeration/.test(byName.scan_domain?.description ?? "")
+  );
+  check(
+    "REGRESSION — check_subdomain_takeover no longer claims DNS-only",
+    !/reads DNS only/i.test(byName.check_subdomain_takeover?.description ?? "")
   );
 
   console.log(`\n  calling check_email_spoofing on ${TARGET} ...`);

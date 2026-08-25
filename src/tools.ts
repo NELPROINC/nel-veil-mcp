@@ -46,8 +46,20 @@ export interface ToolDef<S extends Record<string, z.ZodTypeAny> = DomainShape> {
   check?: string;
 }
 
+/**
+ * The honest shared note.
+ *
+ * It used to say "reads public DNS records and public HTTP responses only. It
+ * sends no intrusive traffic" and was attached to EVERY tool. That was not true
+ * of all of them, and an inaccurate safety claim on a security product is the
+ * worst kind of copy error: it is the sentence a user relies on when deciding
+ * whether they are allowed to point this at someone else's domain.
+ *
+ * So this note now says only what is true of every tool that carries it, and the
+ * two tools that do more than this carry their own, longer disclosure instead.
+ */
 const PASSIVE_NOTE =
-  "This is a free, passive check: it reads public DNS records and public HTTP responses only. It sends no intrusive traffic, runs no exploits, and needs no permission from the domain owner.";
+  "This is a free check that uses public information: DNS records and ordinary HTTP requests. It does no port scanning and no exploit testing.";
 
 export const CHECK_TOOLS: ToolDef<DomainShape>[] = [
   {
@@ -67,11 +79,12 @@ export const CHECK_TOOLS: ToolDef<DomainShape>[] = [
     title: "Check a domain's HTTPS/TLS configuration",
     check: "tls",
     description:
-      "Answers: is this domain's HTTPS set up correctly, and is the certificate about to cause an outage? " +
-      "Checks the TLS certificate and connection: whether the certificate is valid for the hostname, who issued it, how many days remain until expiry, and whether the negotiated protocol version and configuration are current rather than deprecated. " +
-      "Returns a 0-100 score plus findings, including expiry dates that can be acted on. " +
-      PASSIVE_NOTE +
-      " Use this for certificate expiry, HTTPS misconfiguration, or general SSL health. It does not check HTTP security headers — use check_security_headers for those.",
+      "Answers: does this domain's TLS configuration have known weaknesses? " +
+      "Returns the Qualys SSL Labs assessment grade for the host, plus findings for specific known problems when present: Heartbleed, POODLE, RC4 support, deprecated protocol versions, missing forward secrecy, and certificate chain issues. " +
+      "IMPORTANT — this one is NOT passive. It queries Qualys SSL Labs, which performs an ACTIVE assessment of the target from Qualys's own infrastructure (reusing a recent cached result when Qualys has one). NEL sends no probe itself, but running this does cause the target to be actively tested by a third party. Prefer it for a domain you own or are authorised to test. " +
+      "It is free, and it does no port scanning and no exploit testing of its own. " +
+      "It does NOT report certificate expiry dates, the issuer, or hostname validity — if you need those, read the certificate directly. " +
+      "It also does not check HTTP security headers — use check_security_headers for those.",
     inputSchema: domainArg,
   },
   {
@@ -94,8 +107,9 @@ export const CHECK_TOOLS: ToolDef<DomainShape>[] = [
       "Answers: is this domain publicly serving files it should not be? " +
       "Requests a small, fixed list of well-known sensitive paths — things like .env, .git/config, backup archives and exposed configuration — and reports which return real content rather than a 404. " +
       "Returns a 0-100 score plus a finding per exposed path. " +
-      "This is a passive, free check: it performs ordinary GET requests for a fixed list of public URLs, exactly as any web crawler would. It does not enumerate, brute-force or fuzz paths, and downloads nothing beyond what is needed to confirm exposure. " +
-      "Use this for leaked secrets, exposed configuration, or accidentally published files. It does not discover subdomains or scan ports.",
+      "How it works, stated plainly: it makes ordinary GET requests for a small FIXED list of well-known paths. It does not brute-force, fuzz, or enumerate — the list never grows and never adapts to what it finds. Note that these are paths an ordinary crawler would not request (.env, .git/config), so the requests are recognisable in a target's logs as a security check rather than routine crawling. " +
+      PASSIVE_NOTE +
+      " Use this for leaked secrets, exposed configuration, or accidentally published files. It does not discover subdomains.",
     inputSchema: domainArg,
   },
   {
@@ -106,8 +120,9 @@ export const CHECK_TOOLS: ToolDef<DomainShape>[] = [
       "Answers: does this domain have DNS records pointing at services someone else could claim? " +
       "Inspects published DNS records for dangling CNAMEs — entries still pointing at a de-provisioned cloud or SaaS host (an unclaimed bucket, an expired app instance) that an attacker could register and then serve content from a hostname users already trust. " +
       "Returns a 0-100 score plus a finding per at-risk record, naming the record and the service it points to. " +
+      "How it works, stated plainly: it resolves a small fixed list of common subdomain names (www, mail, dev, staging and similar) and, for any that resolve to a known cloud or SaaS host, makes one ordinary HTTPS GET to check for that provider's unclaimed-resource page. So it is not DNS-only — it does send a small number of HTTP requests to subdomains of the target. It never registers, claims, or modifies anything. " +
       PASSIVE_NOTE +
-      " It reads DNS only and never attempts to claim anything. Use this for dangling DNS, abandoned cloud resources, or subdomain hijacking risk.",
+      " Use this for dangling DNS, abandoned cloud resources, or subdomain hijacking risk.",
     inputSchema: domainArg,
   },
 ];
@@ -119,7 +134,8 @@ export const SCAN_TOOL: ToolDef<DomainShape> = {
     "Answers: what is this domain's overall security posture? " +
     "Runs every passive NEL VEIL module in one pass — DNS, email authentication (SPF/DKIM/DMARC), TLS, HTTP security headers, cookies, CORS, exposed files, subdomain-takeover risk, technology fingerprinting, breach exposure, domain reputation, cloud misconfiguration and JavaScript supply chain — and returns findings from all of them with a per-module score. " +
     "Use this when the question is broad: how secure is this domain, review this vendor, what should we fix first. For a single specific question prefer the narrower tool — check_email_spoofing, check_tls, check_security_headers, check_exposed_files or check_subdomain_takeover — which is faster and easier to read. " +
-    "This is a free, passive scan built entirely from public information: public DNS records and ordinary HTTP requests. It performs NO port scanning, NO endpoint enumeration and NO exploit testing, so it needs no permission from the domain owner and is safe to run against a third party being evaluated. " +
+    "It is free. What it actually sends, stated plainly, because \"passive\" means different things to different people. It performs NO port scanning and NO exploit testing. It DOES: request a fixed list of well-known paths, including common admin panels such as /phpmyadmin/ and /manager/html, to report whether they are publicly reachable; resolve a small fixed list of common subdomain names and make one HTTPS request to any that point at a known cloud host; and query Qualys SSL Labs, which performs its own ACTIVE TLS assessment of the target from Qualys's infrastructure. " +
+    "None of that is intrusive in the sense of attacking anything, and all of it is information the domain publishes — but it is more than a crawler does, and it is recognisable in the target's logs as a security scan. Prefer running it against a domain you own or are authorised to assess. " +
     "Active scanning (port scans, API probing, proof-of-concept exploit checks) is deliberately not available through this MCP server; it requires proving control of the domain and runs only at nelprofessional.com.",
   inputSchema: domainArg,
 };
