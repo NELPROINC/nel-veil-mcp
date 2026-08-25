@@ -24,7 +24,7 @@ const domainArg = {
     .min(1)
     .max(253)
     .describe(
-      "The domain to check, e.g. example.com. Bare domains work best; a full URL or a www. prefix is accepted and normalised. Do not pass an IP address, an email address, or a private/internal hostname — those are refused."
+      "The domain to check, e.g. example.com. Bare domains work best; a full URL, a www. prefix, or an address with a userinfo part are all accepted and normalised to the bare hostname. A PUBLIC IP address is also accepted, so an origin server can be checked directly. What is refused: a private or reserved address (127.0.0.1, 10.x, 192.168.x, 169.254.169.254 and the rest), a name with no TLD such as localhost, and an IPv6 literal."
     ),
 };
 
