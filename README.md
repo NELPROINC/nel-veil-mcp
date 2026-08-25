@@ -35,7 +35,7 @@ claude mcp add nel-veil -- npx -y nel-veil-mcp
 npx -y nel-veil-mcp
 ```
 
-It prints a ready line **to stderr** — something like `nel-veil-mcp 0.1.4 ready — 7 tools, free passive tier.` — and then waits for JSON-RPC on stdin. That is correct: it is a stdio server, not a CLI, and stdout carries the protocol, so nothing else is ever written there.
+It prints a ready line **to stderr** — something like `nel-veil-mcp 0.1.5 ready — 7 tools, free passive tier.` — and then waits for JSON-RPC on stdin. That is correct: it is a stdio server, not a CLI, and stdout carries the protocol, so nothing else is ever written there.
 
 Requires Node 18 or newer.
 
