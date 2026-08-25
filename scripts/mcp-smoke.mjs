@@ -1,0 +1,145 @@
+/**
+ * End-to-end MCP smoke test — speaks real JSON-RPC over STDIO to the built server.
+ *
+ *   node scripts/mcp-smoke.mjs            (against production)
+ *   NEL_API_URL=http://127.0.0.1:4310 node scripts/mcp-smoke.mjs
+ *
+ * This is deliberately NOT a unit test of the handlers. It launches dist/index.js
+ * exactly the way `npx nel-veil-mcp` would, performs the initialize handshake,
+ * lists the tools, and calls one for real. If the transport, the tool schemas, or
+ * the wiring to the API is wrong, this fails where a unit test would pass.
+ */
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const TARGET = process.argv[2] ?? "github.com";
+
+const child = spawn(process.execPath, [join(ROOT, "dist", "index.js")], {
+  stdio: ["pipe", "pipe", "pipe"],
+  env: { ...process.env },
+});
+
+let buf = "";
+const pending = new Map();
+let nextId = 1;
+
+child.stdout.on("data", (chunk) => {
+  buf += chunk.toString();
+  let i;
+  while ((i = buf.indexOf("\n")) >= 0) {
+    const line = buf.slice(0, i).trim();
+    buf = buf.slice(i + 1);
+    if (!line) continue;
+    let msg;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      console.log("  [non-JSON on stdout — would corrupt the protocol]", line.slice(0, 80));
+      continue;
+    }
+    if (msg.id && pending.has(msg.id)) {
+      pending.get(msg.id)(msg);
+      pending.delete(msg.id);
+    }
+  }
+});
+
+child.stderr.on("data", (d) => {
+  const s = d.toString().trim();
+  if (s) console.log("  [stderr]", s.slice(0, 120));
+});
+
+function send(method, params) {
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    pending.set(id, resolve);
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+    setTimeout(() => reject(new Error(`timeout waiting for ${method}`)), 90_000);
+  });
+}
+
+function notify(method, params) {
+  child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n");
+}
+
+const ok = (label, cond) => console.log(`${cond ? "PASS" : "FAIL"}  ${label}`);
+let failures = 0;
+const check = (label, cond) => {
+  if (!cond) failures++;
+  ok(label, cond);
+};
+
+try {
+  const init = await send("initialize", {
+    protocolVersion: "2024-11-05",
+    capabilities: {},
+    clientInfo: { name: "nel-veil-smoke", version: "1.0.0" },
+  });
+  check("initialize handshake succeeds", !!init.result);
+  check("server identifies as nel-veil", init.result?.serverInfo?.name === "nel-veil");
+  notify("notifications/initialized", {});
+
+  const list = await send("tools/list", {});
+  const tools = list.result?.tools ?? [];
+  const names = tools.map((t) => t.name).sort();
+  check(`tools/list returns 7 tools (got ${tools.length})`, tools.length === 7);
+  check(
+    "the exact expected tool set is exposed",
+    names.join(",") ===
+      [
+        "check_email_spoofing",
+        "check_exposed_files",
+        "check_security_headers",
+        "check_subdomain_takeover",
+        "check_tls",
+        "get_scan_report",
+        "scan_domain",
+      ].join(",")
+  );
+  // Word-boundary matched on the underscore-delimited parts of the name. A bare
+  // /port/ substring test matches "get_scan_report", which is exactly the kind of
+  // false positive that trains people to ignore a failing security check.
+  const ACTIVE_WORDS = new Set([
+    "port", "ports", "portscan", "exploit", "poc", "probe", "bruteforce",
+    "brute", "attack", "intrusive", "enumerate", "fuzz", "payload",
+  ]);
+  check(
+    "no tool name hints at active scanning",
+    !names.some((n) => n.split(/[_-]/).some((part) => ACTIVE_WORDS.has(part.toLowerCase())))
+  );
+  check("every tool has a description", tools.every((t) => (t.description ?? "").length > 100));
+  check(
+    "every tool is annotated read-only and non-destructive",
+    tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint === false)
+  );
+  check(
+    "every description states the passive/free boundary",
+    tools
+      .filter((t) => t.name !== "get_scan_report")
+      .every((t) => /passive/i.test(t.description) && /free/i.test(t.description))
+  );
+
+  console.log(`\n  calling check_email_spoofing on ${TARGET} ...`);
+  const call = await send("tools/call", {
+    name: "check_email_spoofing",
+    arguments: { domain: TARGET },
+  });
+  const body = call.result?.content?.[0]?.text ?? "";
+  check("tool call returns text content", body.length > 0);
+  check("the result is not an error", call.result?.isError !== true);
+  check("the result carries a score", /Score: \d+\/100/.test(body));
+  check("the result carries the honest footer", /passive/i.test(body) && /nelprofessional\.com/.test(body));
+  console.log("\n----- tool output -----");
+  console.log(body.split("\n").slice(0, 12).map((l) => "  " + l).join("\n"));
+  console.log("-----------------------\n");
+} catch (err) {
+  failures++;
+  console.log("FAIL  harness error:", err.message);
+} finally {
+  child.kill();
+}
+
+console.log(failures === 0 ? "\nALL SMOKE CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
+process.exit(failures === 0 ? 0 : 1);

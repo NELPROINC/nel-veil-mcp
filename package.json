@@ -1,0 +1,52 @@
+{
+  "name": "nel-veil-mcp",
+  "version": "0.1.0",
+  "mcpName": "io.github.nelprofessional/nel-veil",
+  "description": "Free passive security scanning for AI agents. Check any domain for email spoofing (DMARC/SPF/DKIM), TLS, security headers, exposed files, and subdomain takeover risk \u2014 using public information only, no intrusive probing.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "nel-veil-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "server.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "mcp-server",
+    "security",
+    "security-scanner",
+    "dmarc",
+    "spf",
+    "dkim",
+    "email-spoofing",
+    "tls",
+    "ssl",
+    "security-headers",
+    "subdomain-takeover",
+    "domain-security",
+    "osint",
+    "passive-scanning",
+    "ai-agent"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5"
+  }
+}
