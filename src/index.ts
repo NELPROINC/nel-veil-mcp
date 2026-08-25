@@ -123,7 +123,7 @@ async function main() {
           const r = await client.runCheck(tool.check!, domain);
           const findings = sortFindings(r.findings ?? []);
           const lines = [
-            `${tool.title} — ${r.domain}`,
+            `${tool.title}: ${r.domain}`,
             `Score: ${r.score}/100 (${r.status})`,
             "",
             findings.length
@@ -170,7 +170,7 @@ async function main() {
             .join(", ") || "none";
 
         const lines = [
-          `Passive security scan — ${r.domain}`,
+          `Passive security scan: ${r.domain}`,
           `${r.modulesAssessed} modules assessed in ${(r.durationMs / 1000).toFixed(1)}s`,
           `Findings: ${summary}`,
           "",
