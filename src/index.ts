@@ -16,8 +16,28 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { NelClient, NelApiError, type Finding, type Footer } from "./client.js";
 import { ALL_TOOL_NAMES, CHECK_TOOLS, SCAN_TOOL, REPORT_TOOL } from "./tools.js";
+import { createRequire } from "node:module";
 
-const VERSION = "0.1.0";
+/**
+ * Read the version from package.json rather than hardcoding it.
+ *
+ * It was hardcoded, and it drifted: the package shipped 0.1.1 while serverInfo
+ * still announced 0.1.0. That value is what MCP clients and the registry read to
+ * identify the running server, so a stale one misreports which build a user is
+ * actually on — exactly the field you consult when diagnosing "is my install
+ * current?". Deriving it removes the possibility rather than the instance.
+ *
+ * From dist/index.js, "../package.json" is the package root in both the repo and
+ * the published tarball. The fallback exists only so an unreadable manifest
+ * degrades to a wrong version rather than a server that refuses to start.
+ */
+const VERSION: string = (() => {
+  try {
+    return createRequire(import.meta.url)("../package.json").version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 const client = new NelClient();
 

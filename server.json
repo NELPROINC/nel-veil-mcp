@@ -1,29 +1,29 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.nelprofessional/nel-veil",
-  "description": "Free passive security scanning for AI agents. Check any domain for email spoofing (DMARC/SPF/DKIM), TLS and certificate expiry, HTTP security headers, publicly exposed files, and subdomain-takeover risk — using public DNS and ordinary HTTP requests only. No port scanning, no exploit testing, no API key required.",
-  "version": "0.1.0",
-  "repository": {
-    "url": "https://github.com/NELPROFESSIONAL/nel-veil-mcp",
-    "source": "github"
-  },
-  "packages": [
-    {
-      "registryType": "npm",
-      "identifier": "nel-veil-mcp",
-      "version": "0.1.0",
-      "transport": {
-        "type": "stdio"
-      },
-      "environmentVariables": [
-        {
-          "name": "NEL_API_URL",
-          "description": "Override the NEL VEIL API base URL. Only needed for local development against a self-hosted backend; leave unset to use the public API at https://api.nelprofessional.com.",
-          "isRequired": false,
-          "isSecret": false,
-          "format": "string"
-        }
-      ]
-    }
-  ]
+    "$schema":  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+    "name":  "io.github.NELPROINC/nel-veil",
+    "description":  "Free passive security scanning - check any domain\u0027s DMARC, TLS, headers, and exposures.",
+    "version":  "0.1.1",
+    "repository":  {
+                       "url":  "https://github.com/NELPROFESSIONAL/nel-veil-mcp",
+                       "source":  "github"
+                   },
+    "packages":  [
+                     {
+                         "registryType":  "npm",
+                         "identifier":  "nel-veil-mcp",
+                         "version":  "0.1.1",
+                         "transport":  {
+                                           "type":  "stdio"
+                                       },
+                         "environmentVariables":  [
+                                                      {
+                                                          "name":  "NEL_API_URL",
+                                                          "description":  "Override the NEL VEIL API base URL. Only needed for local development against a self-hosted backend; leave unset to use the public API at https://api.nelprofessional.com.",
+                                                          "isRequired":  false,
+                                                          "isSecret":  false,
+                                                          "format":  "string"
+                                                      }
+                                                  ]
+                     }
+                 ]
 }

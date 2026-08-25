@@ -1,9 +1,11 @@
 {
   "name": "nel-veil-mcp",
-  "version": "0.1.0",
-  "mcpName": "io.github.nelprofessional/nel-veil",
+  "version": "0.1.1",
+  "mcpName": "io.github.NELPROINC/nel-veil",
   "description": "Free passive security scanning for AI agents. Check any domain for email spoofing (DMARC/SPF/DKIM), TLS, security headers, exposed files, and subdomain takeover risk \u2014 using public information only, no intrusive probing.",
   "license": "MIT",
+  "homepage": "https://www.nelprofessional.com/mcp",
+  "author": "NEL Professional (https://www.nelprofessional.com)",
   "type": "module",
   "bin": {
     "nel-veil-mcp": "dist/index.js"
@@ -12,7 +14,8 @@
   "files": [
     "dist",
     "README.md",
-    "server.json"
+    "server.json",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"
