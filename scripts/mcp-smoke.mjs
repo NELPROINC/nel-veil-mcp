@@ -84,19 +84,58 @@ try {
   const list = await send("tools/list", {});
   const tools = list.result?.tools ?? [];
   const names = tools.map((t) => t.name).sort();
-  check(`tools/list returns 7 tools (got ${tools.length})`, tools.length === 7);
+  check(`tools/list returns 9 tools (got ${tools.length})`, tools.length === 9);
   check(
     "the exact expected tool set is exposed",
     names.join(",") ===
       [
+        "check_compliance",
         "check_email_spoofing",
         "check_exposed_files",
         "check_security_headers",
         "check_subdomain_takeover",
         "check_tls",
         "get_scan_report",
+        "list_compliance_frameworks",
         "scan_domain",
       ].join(",")
+  );
+
+  // ── The compliance pair ──────────────────────────────────────────────────
+  // Schema-level only, so the smoke test stays fast: the assessment itself runs
+  // a full passive scan and is covered by the backend's own suites.
+  const byToolName = Object.fromEntries(tools.map((t) => [t.name, t]));
+  const compTool = byToolName.check_compliance;
+  check("check_compliance takes a domain", !!compTool?.inputSchema?.properties?.domain);
+  check(
+    "check_compliance offers the frameworks and region filters",
+    !!compTool?.inputSchema?.properties?.frameworks && !!compTool?.inputSchema?.properties?.region
+  );
+  check(
+    "check_compliance requires only the domain",
+    JSON.stringify(compTool?.inputSchema?.required ?? []) === JSON.stringify(["domain"])
+  );
+  check(
+    "check_compliance tells the agent to read coverage before quoting a score",
+    /COVERAGE/i.test(compTool?.description ?? "") && /Not assessed/.test(compTool?.description ?? "")
+  );
+  check(
+    "check_compliance disclaims audit, certification and legal advice",
+    /NOT AUDIT RESULTS/i.test(compTool?.description ?? "") &&
+      /not legal advice/i.test(compTool?.description ?? "")
+  );
+  const fwTool = byToolName.list_compliance_frameworks;
+  check(
+    "the catalogue tool takes no arguments",
+    Object.keys(fwTool?.inputSchema?.properties ?? {}).length === 0
+  );
+  check(
+    "the catalogue tool is closed-world — it contacts no third-party host",
+    fwTool?.annotations?.openWorldHint === false
+  );
+  check(
+    "the catalogue tool says some entries can never be assessed",
+    /assessable/i.test(fwTool?.description ?? "")
   );
   // Word-boundary matched on the underscore-delimited parts of the name. A bare
   // /port/ substring test matches "get_scan_report", which is exactly the kind of
@@ -120,11 +159,22 @@ try {
   // the first place — the test was enforcing the wrong thing. It now enforces
   // what is actually true, and pins the disclosure so it cannot quietly vanish.
   const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
+  // Only tools that actually reach out to a TARGET carry this disclosure.
+  // get_scan_report reads a scan NEL already has, and
+  // list_compliance_frameworks returns a static catalogue and takes no domain
+  // at all — neither of them sends anything to a third party, so requiring them
+  // to promise "no port scanning" would be noise rather than a safety claim.
+  const NON_TARGETING = new Set(["get_scan_report", "list_compliance_frameworks"]);
   check(
-    "every check tool states it is free and does no port scanning / exploit testing",
+    "every tool that contacts a target states it is free and does no port scanning / exploit testing",
     tools
-      .filter((t) => t.name !== "get_scan_report")
+      .filter((t) => !NON_TARGETING.has(t.name))
       .every((t) => /free/i.test(t.description) && /no port scanning|NO port scanning/i.test(t.description))
+  );
+  check(
+    "and the non-targeting tools say they contact no target",
+    /runs no scan/i.test(byToolName.list_compliance_frameworks?.description ?? "") &&
+      /cannot start a new scan/i.test(byToolName.get_scan_report?.description ?? "")
   );
   check(
     "REGRESSION — check_tls DISCLOSES that it is not passive (Qualys SSL Labs assesses the target)",

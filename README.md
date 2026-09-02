@@ -2,7 +2,7 @@
 
 Ask your agent *"can someone spoof email from example.com?"* and get a real answer in about ten seconds.
 
-NEL VEIL MCP gives any MCP-compatible agent **seven tools** for checking a domain's public security posture: email spoofing (DMARC/SPF/DKIM), TLS weaknesses, HTTP security headers, publicly exposed files, subdomain-takeover risk, a combined scan, and retrieval of an earlier scan.
+NEL VEIL MCP gives any MCP-compatible agent **nine tools** for checking a domain's public security posture: email spoofing (DMARC/SPF/DKIM), TLS weaknesses, HTTP security headers, publicly exposed files, subdomain-takeover risk, a combined scan, retrieval of an earlier scan, and compliance readiness against a register of 102 global frameworks.
 
 **Free. No API key. No signup.**
 
@@ -35,7 +35,7 @@ claude mcp add nel-veil -- npx -y nel-veil-mcp
 npx -y nel-veil-mcp
 ```
 
-It prints a ready line **to stderr** — something like `nel-veil-mcp 0.1.5 ready — 7 tools, free passive tier.` — and then waits for JSON-RPC on stdin. That is correct: it is a stdio server, not a CLI, and stdout carries the protocol, so nothing else is ever written there.
+It prints a ready line **to stderr** — something like `nel-veil-mcp 0.2.0 ready — 9 tools, free passive tier.` — and then waits for JSON-RPC on stdin. That is correct: it is a stdio server, not a CLI, and stdout carries the protocol, so nothing else is ever written there.
 
 Requires Node 18 or newer.
 
@@ -79,8 +79,35 @@ That domain is in good shape. The finding people are most often surprised by is 
 | `check_subdomain_takeover` | Are there DNS records pointing at services someone else could claim? |
 | `scan_domain` | All of the above at once, with a per-module score. |
 | `get_scan_report` | Retrieve a scan already run at nelprofessional.com, by its `scn_…` id. |
+| `list_compliance_frameworks` | Which laws and standards can this be checked against — and which can it not? |
+| `check_compliance` | What do these findings suggest about alignment with GDPR, NIS2, PIPEDA, CCPA, ISO 27001, SOC 2 and 96 more? |
 
 Each returns a 0–100 score plus specific findings you can act on.
+
+### Compliance
+
+`check_compliance` maps one passive scan onto a register of **102 frameworks**
+across Canada, the United States, the EU/EEA, the United Kingdom, Asia-Pacific,
+Africa and the global standards — citing the specific provision each finding
+bears on.
+
+Read the **coverage** field before repeating a score. Every framework reports
+how many of the scan categories it relies on were actually observed, as `9/16`:
+
+- A framework whose relevant checks did not run has a **null score** and the
+  tier **"Not assessed"**, with a reason. That is unknown, not clean.
+- A clean result over fewer than half a framework's categories is **"Partial"**,
+  not "Strong".
+- **26 of the 102 are "Not assessable"** — an anti-money-laundering regime, a
+  consumer-protection statute, a criminal offences provision or a securities
+  disclosure rule imposes no technical safeguard an external scan could ever
+  evidence. They are listed and explained, never scored.
+
+These are indicative readiness signals from public-surface evidence. **They are
+not an audit, not a certification and not legal advice**, and every framework
+also carries a note on what it requires that no external scan can see — consent
+records, impact assessments, retention schedules, vendor agreements, board
+governance.
 
 ---
 

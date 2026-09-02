@@ -15,7 +15,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { NelClient, NelApiError, type Finding, type Footer } from "./client.js";
-import { ALL_TOOL_NAMES, CHECK_TOOLS, SCAN_TOOL, REPORT_TOOL } from "./tools.js";
+import {
+  ALL_TOOL_NAMES,
+  CHECK_TOOLS,
+  SCAN_TOOL,
+  REPORT_TOOL,
+  FRAMEWORKS_TOOL,
+  COMPLIANCE_TOOL,
+} from "./tools.js";
 import { createRequire } from "node:module";
 
 /**
@@ -229,6 +236,146 @@ async function main() {
           );
         }
         return errorText(describeError(err, scan_id));
+      }
+    }
+  );
+
+  // ── The framework catalogue ─────────────────────────────────────────────
+  server.registerTool(
+    FRAMEWORKS_TOOL.name,
+    {
+      title: FRAMEWORKS_TOOL.title,
+      description: FRAMEWORKS_TOOL.description,
+      inputSchema: FRAMEWORKS_TOOL.inputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        // Takes no domain and touches nothing outside NEL's own catalogue.
+        openWorldHint: false,
+      },
+    },
+    async () => {
+      try {
+        const r = await client.listFrameworks();
+        const lines: string[] = [
+          `NEL VEIL compliance register: ${r.total} frameworks, ${r.assessable} externally assessable.`,
+          "",
+        ];
+        for (const g of r.regions) {
+          lines.push(`${g.label} (${g.frameworks.length})`);
+          for (const f of g.frameworks) {
+            const flag = f.assessable ? "" : "  [not externally assessable]";
+            lines.push(`  ${f.id.padEnd(26)} ${f.name}${flag}`);
+            lines.push(`      ${f.jurisdiction} · ${f.area} · ${f.authority}`);
+          }
+          lines.push("");
+        }
+        lines.push(
+          "An entry marked [not externally assessable] imposes no technical safeguard a scan can evidence — it is listed so it can be discussed, never scored."
+        );
+        lines.push(`Pass any id to check_compliance. ${r.footer.note}`);
+        return text(lines.join("\n"));
+      } catch (err) {
+        return errorText(describeError(err, "the framework catalogue"));
+      }
+    }
+  );
+
+  // ── Compliance readiness ────────────────────────────────────────────────
+  server.registerTool(
+    COMPLIANCE_TOOL.name,
+    {
+      title: COMPLIANCE_TOOL.title,
+      description: COMPLIANCE_TOOL.description,
+      inputSchema: COMPLIANCE_TOOL.inputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({
+      domain,
+      frameworks,
+      region,
+    }: {
+      domain: string;
+      frameworks?: string[];
+      region?: string;
+    }) => {
+      try {
+        const r = await client.runCompliance({ domain, frameworks, region });
+        const scored = r.frameworks
+          .filter((f) => f.score !== null)
+          .sort((a, b) => (a.score as number) - (b.score as number));
+        const notAssessed = r.frameworks.filter((f) => f.tier === "Not assessed");
+        const notAssessable = r.frameworks.filter((f) => f.tier === "Not assessable");
+
+        const lines: string[] = [
+          `Compliance readiness: ${r.domain}`,
+          `${r.modulesAssessed} modules assessed in ${(r.durationMs / 1000).toFixed(1)}s; ` +
+            `${r.observedCategories.length} of 16 scan categories observed.`,
+          `${r.stats.assessed} assessed · ${r.stats.notAssessed} not assessed · ` +
+            `${r.stats.notAssessable} not externally assessable · ${r.stats.total} total`,
+          "",
+        ];
+
+        // Weakest first: the useful end of the list, and the end an agent quotes.
+        if (scored.length) {
+          lines.push("Readiness signals, weakest first:");
+          for (const f of scored.slice(0, 25)) {
+            lines.push(
+              `  ${String(f.score).padStart(3)}/100  ${f.tier.padEnd(9)} ${f.name} (${f.jurisdiction})` +
+                `  — ${f.coverage} checks observed, ${f.mappedFindingCount} mapped findings`
+            );
+          }
+          if (scored.length > 25) lines.push(`  …and ${scored.length - 25} more assessed.`);
+        } else {
+          lines.push("No framework had enough evidence to assess.");
+        }
+        lines.push("");
+
+        if (notAssessed.length) {
+          lines.push(
+            `NOT ASSESSED (${notAssessed.length}) — the checks these rely on did not run. This is unknown, NOT clean:`
+          );
+          for (const f of notAssessed.slice(0, 6)) {
+            lines.push(`  ${f.name} (${f.jurisdiction}) — ${f.reason ?? "no relevant check completed"}`);
+          }
+          if (notAssessed.length > 6) lines.push(`  …and ${notAssessed.length - 6} more.`);
+          lines.push("");
+        }
+
+        if (notAssessable.length) {
+          const eg = notAssessable.slice(0, 3).map((f) => f.name).join(", ");
+          lines.push(
+            `NOT EXTERNALLY ASSESSABLE (${notAssessable.length}) — no technical duty a scan can evidence, e.g. ${eg}.`
+          );
+          lines.push("");
+        }
+
+        if (r.findings.length) {
+          lines.push("Findings driving these signals:");
+          for (const f of r.findings.slice(0, 12)) {
+            lines.push(`  [${f.severity.toUpperCase()}] ${f.title}`);
+            if (f.frameworks.length) {
+              const more = f.frameworks.length > 6 ? ` and ${f.frameworks.length - 6} more` : "";
+              lines.push(`      ${f.frameworks.slice(0, 6).join(", ")}${more}`);
+            }
+          }
+          lines.push("");
+        }
+
+        lines.push(
+          `Passive-only confirmed: ${r.tierProof.allowed.length} passive modules ran, ` +
+            `${r.tierProof.activeAttempted.length} intrusive modules attempted.`
+        );
+        lines.push(renderFooter(r.footer));
+        return text(lines.join("\n"));
+      } catch (err) {
+        return errorText(describeError(err, domain));
       }
     }
   );

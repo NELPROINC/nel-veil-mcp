@@ -158,4 +158,58 @@ export const REPORT_TOOL: ToolDef<ScanIdShape> = {
   },
 };
 
-export const ALL_TOOL_NAMES: string[] = [SCAN_TOOL, ...CHECK_TOOLS, REPORT_TOOL].map((t) => t.name);
+/**
+ * The compliance pair.
+ *
+ * These exist because "is this domain secure?" and "does this domain look
+ * aligned with the law that applies to us?" are different questions, and an
+ * agent asked the second one should not have to invent a mapping from findings
+ * to statutes. The API does that mapping against a register of 102 frameworks
+ * and, crucially, reports COVERAGE — so an agent can say "not assessed" instead
+ * of implying a clean bill of health from checks that never ran.
+ *
+ * The catalogue tool is separate and cheap on purpose: an agent needs the ids
+ * before it can filter, and fetching them should not cost a scan.
+ */
+export type ComplianceShape = {
+  domain: z.ZodString;
+  frameworks: z.ZodOptional<z.ZodArray<z.ZodString>>;
+  region: z.ZodOptional<z.ZodEnum<["canada", "united_states", "eu_eea", "united_kingdom", "asia_pacific", "africa", "global"]>>;
+};
+
+export const FRAMEWORKS_TOOL: ToolDef<Record<string, never>> = {
+  name: "list_compliance_frameworks",
+  title: "List the compliance frameworks NEL VEIL can assess a domain against",
+  description:
+    "Answers: which laws, regulations and standards can this tool report on, and which can it not? " +
+    "Returns the full register — 102 frameworks across Canada, the United States, the EU/EEA, the United Kingdom, Asia-Pacific, Africa and global standards (ISO 27001, SOC 2, PCI DSS, NIST CSF and others) — grouped by region, each with its id, jurisdiction, regulator and subject area. " +
+    "Each entry says whether it is externally ASSESSABLE. Around a quarter are not: an anti-money-laundering regime, a consumer-protection statute, a criminal offences provision or a securities disclosure rule imposes no technical safeguard an external scan could ever evidence, and the entry says so in words rather than being quietly scored. " +
+    "Use it to find the id to pass to check_compliance, or to answer 'can you check us against <law>?' honestly. " +
+    "It runs no scan, costs nothing and takes no domain. For an actual assessment use check_compliance.",
+  inputSchema: {},
+};
+
+export const COMPLIANCE_TOOL: ToolDef<ComplianceShape> = {
+  name: "check_compliance",
+  title: "Assess a domain's readiness signals against compliance frameworks",
+  description:
+    "Answers: what do this domain's public-facing security signals suggest about its alignment with the laws and standards that apply to it? " +
+    "Runs one passive scan and maps the findings onto a register of 102 frameworks — GDPR, UK GDPR, PIPEDA, CCPA/CPRA and the US state privacy acts, NIS2, DORA, the EU AI Act, PIPL, APPI, POPIA, ISO 27001, SOC 2, PCI DSS, NIST CSF and more — returning a per-framework readiness score with the specific provision each finding bears on. " +
+    "READ THE COVERAGE FIELD BEFORE RELAYING A SCORE. Every framework reports how many of the scan categories it relies on were actually observed, as \"9/16\". A framework whose relevant checks did not run has a NULL score and the tier \"Not assessed\", with a reason — it is not clean, it is unknown. A clean result over fewer than half a framework's categories is reported as \"Partial\" rather than \"Strong\". A framework with no externally observable duty is \"Not assessable\" and is never scored. " +
+    "Optionally narrow with `frameworks` (ids from list_compliance_frameworks) or `region`. " +
+    "THESE ARE NOT AUDIT RESULTS, NOT A CERTIFICATION AND NOT LEGAL ADVICE. They are indicative readiness signals from public-surface evidence, and every framework also carries a note on what it requires that no external scan can see — consent records, impact assessments, retention schedules, vendor agreements, board governance. Say so when you relay them. " +
+    "It is free and passive, with the same disclosure as scan_domain: no port scanning and no exploit testing, but it does request well-known paths, resolve common subdomains and use the Qualys SSL Labs assessment. Prefer a domain you own or are authorised to assess.",
+  inputSchema: {
+    domain: domainArg.domain,
+    frameworks: z
+      .array(z.string().min(1).max(64))
+      .optional()
+      .describe("Optional framework ids to restrict the assessment to, e.g. [\"gdpr\", \"uk_gdpr\", \"iso27001\"]. Get valid ids from list_compliance_frameworks. An unknown id is reported as an error rather than silently ignored."),
+    region: z
+      .enum(["canada", "united_states", "eu_eea", "united_kingdom", "asia_pacific", "africa", "global"])
+      .optional()
+      .describe("Optional region to restrict the assessment to. Combines with `frameworks` if both are given."),
+  },
+};
+
+export const ALL_TOOL_NAMES: string[] = [SCAN_TOOL, ...CHECK_TOOLS, REPORT_TOOL, FRAMEWORKS_TOOL, COMPLIANCE_TOOL].map((t) => t.name);

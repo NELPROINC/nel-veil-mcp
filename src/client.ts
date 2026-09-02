@@ -123,6 +123,17 @@ export class NelClient {
   getReport(scanId: string) {
     return this.request<unknown>(`/api/v1/scans/${encodeURIComponent(scanId)}`);
   }
+
+  listFrameworks() {
+    return this.request<FrameworksResponse>("/api/v1/mcp/frameworks");
+  }
+
+  runCompliance(body: { domain: string; frameworks?: string[]; region?: string }) {
+    return this.request<ComplianceResponse>("/api/v1/mcp/compliance", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
 }
 
 export interface Footer {
@@ -156,6 +167,59 @@ export interface ScanResponse {
   modulesAssessed: number;
   modules: Array<{ module: string; status: string; score: number; findingCount: number }>;
   findings: Finding[];
+  tierProof: { requested: string[]; allowed: string[]; activeAttempted: string[] };
+  footer: Footer;
+}
+
+export interface CatalogFramework {
+  id: string;
+  name: string;
+  fullName: string;
+  jurisdiction: string;
+  region: string;
+  regionLabel: string;
+  area: string;
+  priority: string;
+  authority: string;
+  /** false = no technical duty an external scan could evidence; never scored. */
+  assessable: boolean;
+  observableCategories: string[];
+  notAssessable: string;
+}
+
+export interface FrameworksResponse {
+  total: number;
+  assessable: number;
+  regions: Array<{ region: string; label: string; frameworks: CatalogFramework[] }>;
+  footer: Footer;
+}
+
+export interface ComplianceFramework {
+  id: string;
+  name: string;
+  jurisdiction: string;
+  region: string;
+  area: string;
+  priority: string;
+  /** null when the scan produced no evidence for this framework. */
+  score: number | null;
+  tier: string;
+  /** "9/16" — how many of the categories this framework relies on were observed. */
+  coverage: string;
+  unobserved: string[];
+  mappedFindingCount: number;
+  reason: string | null;
+  notAssessable: string;
+}
+
+export interface ComplianceResponse {
+  domain: string;
+  durationMs: number;
+  modulesAssessed: number;
+  observedCategories: string[];
+  stats: { total: number; assessed: number; notAssessed: number; notAssessable: number };
+  frameworks: ComplianceFramework[];
+  findings: Array<{ code: string; title: string; severity: string; impact: string; frameworks: string[] }>;
   tierProof: { requested: string[]; allowed: string[]; activeAttempted: string[] };
   footer: Footer;
 }
