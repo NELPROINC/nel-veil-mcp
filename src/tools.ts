@@ -79,12 +79,12 @@ export const CHECK_TOOLS: ToolDef<DomainShape>[] = [
     title: "Check a domain's HTTPS/TLS configuration",
     check: "tls",
     description:
-      "Answers: does this domain's TLS configuration have known weaknesses? " +
-      "Returns the Qualys SSL Labs assessment grade for the host, plus findings for specific known problems when present: Heartbleed, POODLE, RC4 support, deprecated protocol versions, missing forward secrecy, and certificate chain issues. " +
-      "IMPORTANT — this one is NOT passive. It queries Qualys SSL Labs, which performs an ACTIVE assessment of the target from Qualys's own infrastructure (reusing a recent cached result when Qualys has one). NEL sends no probe itself, but running this does cause the target to be actively tested by a third party. Prefer it for a domain you own or are authorised to test. " +
-      "It is free, and it does no port scanning and no exploit testing of its own. " +
-      "It does NOT report certificate expiry dates, the issuer, or hostname validity — if you need those, read the certificate directly. " +
-      "It also does not check HTTP security headers — use check_security_headers for those.",
+      "Answers: is this domain's HTTPS certificate valid, trusted, and about to expire? " +
+      "Makes ONE ordinary TLS handshake to port 443 — the same thing a browser does when it loads the site — and reports what the server presents: the certificate issuer and subject, the validity window and how many days remain, the subject alternative names, and the protocol and cipher that were negotiated. " +
+      "It flags an expired certificate, one expiring within 14 or 30 days, a self-signed certificate, an untrusted chain, a certificate that does not cover the hostname, and a connection negotiated over deprecated TLS 1.0 or 1.1. " +
+      "It is free and genuinely passive: NEL makes the one connection itself, no third party is asked to test the target, and it does no port scanning and no exploit testing. " +
+      "WHAT IT CANNOT TELL YOU: a single handshake shows what the server chose for THAT connection, not everything it would accept. It does not enumerate supported cipher suites, does not produce a letter grade, and does not test for Heartbleed, POODLE, DROWN or RC4 support. Those need the deep TLS assessment, which is an active check and runs only at nelprofessional.com after you prove you control the domain. " +
+      "It does not check HTTP security headers — use check_security_headers for those.",
     inputSchema: domainArg,
   },
   {
@@ -134,7 +134,7 @@ export const SCAN_TOOL: ToolDef<DomainShape> = {
     "Answers: what is this domain's overall security posture? " +
     "Runs every passive NEL VEIL module in one pass — DNS, email authentication (SPF/DKIM/DMARC), TLS, HTTP security headers, cookies, CORS, exposed files, subdomain-takeover risk, technology fingerprinting, breach exposure, domain reputation, cloud misconfiguration and JavaScript supply chain — and returns findings from all of them with a per-module score. " +
     "Use this when the question is broad: how secure is this domain, review this vendor, what should we fix first. For a single specific question prefer the narrower tool — check_email_spoofing, check_tls, check_security_headers, check_exposed_files or check_subdomain_takeover — which is faster and easier to read. " +
-    "It is free. What it actually sends, stated plainly, because \"passive\" means different things to different people. It performs NO port scanning and NO exploit testing. It DOES: request a fixed list of well-known paths, including common admin panels such as /phpmyadmin/ and /manager/html, to report whether they are publicly reachable; resolve a small fixed list of common subdomain names and make one HTTPS request to any that point at a known cloud host; and query Qualys SSL Labs, which performs its own ACTIVE TLS assessment of the target from Qualys's infrastructure. " +
+    "It is free. What it actually sends, stated plainly, because \"passive\" means different things to different people. It performs NO port scanning and NO exploit testing. It DOES: request a fixed list of well-known paths, including common admin panels such as /phpmyadmin/ and /manager/html, to report whether they are publicly reachable; resolve a small fixed list of common subdomain names and make one HTTPS request to any that point at a known cloud host; and make one ordinary TLS handshake to port 443 to read the certificate. " +
     "None of that is intrusive in the sense of attacking anything, and all of it is information the domain publishes — but it is more than a crawler does, and it is recognisable in the target's logs as a security scan. Prefer running it against a domain you own or are authorised to assess. " +
     "Active scanning (port scans, API probing, proof-of-concept exploit checks) is deliberately not available through this MCP server; it requires proving control of the domain and runs only at nelprofessional.com.",
   inputSchema: domainArg,
@@ -198,7 +198,7 @@ export const COMPLIANCE_TOOL: ToolDef<ComplianceShape> = {
     "READ THE COVERAGE FIELD BEFORE RELAYING A SCORE. Every framework reports how many of the scan categories it relies on were actually observed, as \"9/16\". A framework whose relevant checks did not run has a NULL score and the tier \"Not assessed\", with a reason — it is not clean, it is unknown. A clean result over fewer than half a framework's categories is reported as \"Partial\" rather than \"Strong\". A framework with no externally observable duty is \"Not assessable\" and is never scored. " +
     "Optionally narrow with `frameworks` (ids from list_compliance_frameworks) or `region`. " +
     "THESE ARE NOT AUDIT RESULTS, NOT A CERTIFICATION AND NOT LEGAL ADVICE. They are indicative readiness signals from public-surface evidence, and every framework also carries a note on what it requires that no external scan can see — consent records, impact assessments, retention schedules, vendor agreements, board governance. Say so when you relay them. " +
-    "It is free and passive, with the same disclosure as scan_domain: no port scanning and no exploit testing, but it does request well-known paths, resolve common subdomains and use the Qualys SSL Labs assessment. Prefer a domain you own or are authorised to assess.",
+    "It is free and passive, with the same disclosure as scan_domain: no port scanning and no exploit testing, but it does request well-known paths, resolve common subdomains and read the TLS certificate directly. Prefer a domain you own or are authorised to assess.",
   inputSchema: {
     domain: domainArg.domain,
     frameworks: z

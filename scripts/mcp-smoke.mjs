@@ -153,11 +153,16 @@ try {
     "every tool is annotated read-only and non-destructive",
     tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint === false)
   );
-  // check_tls is deliberately NOT described as passive: it queries Qualys SSL
-  // Labs, which actively assesses the target. This assertion used to demand that
-  // EVERY tool claim passivity, which is how the inaccurate copy passed review in
-  // the first place — the test was enforcing the wrong thing. It now enforces
-  // what is actually true, and pins the disclosure so it cannot quietly vanish.
+  // check_tls WAS described as "not passive", because it queried Qualys SSL Labs
+  // and Qualys then actively assessed the target. That is no longer how it works:
+  // the passive check makes one ordinary handshake to 443 from NEL's own
+  // infrastructure and reads the certificate, and the Qualys grade moved to
+  // tls_labs, an ACTIVE ownership-gated module that this server cannot reach.
+  //
+  // So these assertions flipped, and the reason for the flip matters. The old
+  // ones existed because the copy overstated safety; these exist because copy
+  // can just as easily overstate INVASIVENESS, and a user deciding whether they
+  // may point this at a domain deserves an accurate answer in both directions.
   const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
   // Only tools that actually reach out to a TARGET carry this disclosure.
   // get_scan_report reads a scan NEL already has, and
@@ -177,21 +182,37 @@ try {
       /cannot start a new scan/i.test(byToolName.get_scan_report?.description ?? "")
   );
   check(
-    "REGRESSION — check_tls DISCLOSES that it is not passive (Qualys SSL Labs assesses the target)",
-    /NOT passive/i.test(byName.check_tls?.description ?? "") &&
-      /SSL Labs/.test(byName.check_tls?.description ?? "")
+    "REGRESSION — NO tool description claims Qualys or SSL Labs any more",
+    tools.every((t) => !/qualys|ssl labs/i.test(t.description ?? ""))
   );
   check(
-    "REGRESSION — check_tls does not PROMISE certificate expiry it never returns",
+    "REGRESSION — check_tls states it is genuinely passive and NEL-performed",
+    /passive/i.test(byName.check_tls?.description ?? "") &&
+      /no third party/i.test(byName.check_tls?.description ?? "")
+  );
+  check(
+    "REGRESSION — check_tls now promises the certificate facts it actually returns",
     (() => {
-      // Match a promise, not the disclaimer. The description legitimately contains
-      // the phrase "does NOT report certificate expiry dates" — a bare substring
-      // test flags the very sentence that fixes the problem.
       const d = byName.check_tls?.description ?? "";
-      const promises = /Returns[^.]*expiry|including expiry dates|how many days remain until expiry|who issued it, how many/i.test(d);
-      const disclaims = /does NOT report certificate expiry/i.test(d);
-      return !promises && disclaims;
+      return /issuer/i.test(d) && /expir/i.test(d) && /handshake/i.test(d);
     })()
+  );
+  check(
+    "REGRESSION — check_tls does NOT claim a grade or vulnerability tests it no longer does",
+    (() => {
+      // The honest boundary, in the other direction: one handshake cannot
+      // enumerate ciphers or test for Heartbleed, and saying otherwise would be
+      // the same overclaim in a new coat. The description must say so, and must
+      // point at the ownership-gated deep assessment for the real answer.
+      const d = byName.check_tls?.description ?? "";
+      const disclaims = /does not enumerate/i.test(d) && /letter grade/i.test(d);
+      const pointsAtDeep = /deep TLS assessment/i.test(d) && /prove you control the domain/i.test(d);
+      return disclaims && pointsAtDeep;
+    })()
+  );
+  check(
+    "REGRESSION — scan_domain no longer says it triggers a third-party assessment",
+    !/third party|qualys|ssl labs/i.test(byName.scan_domain?.description ?? "")
   );
   check(
     "REGRESSION — scan_domain discloses the admin-panel paths it requests",
